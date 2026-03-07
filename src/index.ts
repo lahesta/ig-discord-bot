@@ -21,6 +21,7 @@ interface BotState {
   lastPostIds: string[];
   lastStoryIds: string[];
   lastRun: string;
+  initialized: boolean;
 }
 
 interface DiscordEmbed {
@@ -156,14 +157,14 @@ async function loadState(): Promise<BotState> {
 
   if (!res.ok) {
     console.log("⚠️  Gistiä ei löytynyt tai ei voitu lukea. Aloitetaan tyhjästä.");
-    return { lastPostIds: [], lastStoryIds: [], lastRun: "" };
+    return { lastPostIds: [], lastStoryIds: [], lastRun: "", initialized: false };
   }
 
   const gist = await res.json();
   const file = gist.files?.[GIST_FILENAME];
 
   if (!file?.content) {
-    return { lastPostIds: [], lastStoryIds: [], lastRun: "" };
+    return { lastPostIds: [], lastStoryIds: [], lastRun: "", initialized: false };
   }
 
   try {
@@ -172,9 +173,10 @@ async function loadState(): Promise<BotState> {
       lastPostIds: parsed.lastPostIds ?? [],
       lastStoryIds: parsed.lastStoryIds ?? [],
       lastRun: parsed.lastRun ?? "",
+      initialized: parsed.initialized ?? false,
     };
   } catch {
-    return { lastPostIds: [], lastStoryIds: [], lastRun: "" };
+    return { lastPostIds: [], lastStoryIds: [], lastRun: "", initialized: false };
   }
 }
 
@@ -212,11 +214,27 @@ async function main() {
   const posts = await fetchRecentPosts();
   console.log(`📬 Haettu ${posts.length} julkaisua Instagramista`);
 
-  const newPosts = posts.filter((p) => !state.lastPostIds.includes(p.id));
-  console.log(`🆕 Uusia julkaisuja: ${newPosts.length}`);
-
   const stories = await fetchStories();
   console.log(`📬 Haettu ${stories.length} storyä Instagramista`);
+
+  // Ensimmäisellä ajolla tallennetaan nykytila ilman ilmoituksia
+  if (!state.initialized) {
+    console.log("🔧 Ensimmäinen ajo — tallennetaan nykytila ilman ilmoituksia.");
+
+    const newState: BotState = {
+      lastPostIds: posts.map((p) => p.id),
+      lastStoryIds: stories.map((s) => s.id),
+      lastRun: new Date().toISOString(),
+      initialized: true,
+    };
+
+    await saveState(newState);
+    console.log("💾 Tila tallennettu. Seuraavasta ajosta lähtien ilmoitukset ovat käytössä.");
+    return;
+  }
+
+  const newPosts = posts.filter((p) => !state.lastPostIds.includes(p.id));
+  console.log(`🆕 Uusia julkaisuja: ${newPosts.length}`);
 
   const newStories = stories.filter((s) => !state.lastStoryIds.includes(s.id));
   console.log(`🆕 Uusia storyja: ${newStories.length}`);
@@ -237,6 +255,7 @@ async function main() {
     lastPostIds: posts.map((p) => p.id),
     lastStoryIds: stories.map((s) => s.id),
     lastRun: new Date().toISOString(),
+    initialized: true,
   };
 
   await saveState(newState);

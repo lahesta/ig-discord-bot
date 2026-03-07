@@ -166,7 +166,7 @@ async function loadState(): Promise<BotState> {
     return { lastPostIds: [], lastStoryIds: [], lastRun: "" };
   }
 
-try {
+  try {
     const parsed = JSON.parse(file.content);
     return {
       lastPostIds: parsed.lastPostIds ?? [],

@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes

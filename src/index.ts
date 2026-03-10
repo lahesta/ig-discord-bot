@@ -173,7 +173,7 @@ function buildPostEmbed(post: IGMedia): DiscordEmbed {
     post.media_type === "VIDEO"
       ? "🎬 Video"
       : post.media_type === "CAROUSEL_ALBUM"
-        ? "🎠 Karuselli"
+        ? "🎠 Kuvakaruselli"
         : "📷 Kuva";
 
   const caption = post.caption
@@ -183,7 +183,7 @@ function buildPostEmbed(post: IGMedia): DiscordEmbed {
     : "";
 
   return {
-    title: `Uusi julkaisu! ${typeLabel}`,
+    title: `Uusi julkaisu: ${typeLabel}`,
     description: caption,
     url: post.permalink,
     color: 0xe1306c,
@@ -194,10 +194,11 @@ function buildPostEmbed(post: IGMedia): DiscordEmbed {
 }
 
 function buildStoryEmbed(story: IGStory): DiscordEmbed {
-  const typeLabel = story.media_type === "VIDEO" ? "🎬 Video Story" : "📷 Story";
+  const typeLabel = story.media_type === "VIDEO" ? "🎬 Video" : "📷 Kuva";
 
   return {
-    title: `Uusi story! ${typeLabel}`,
+    title: `Uusi story: ${typeLabel}`,
+    url: `https://www.instagram.com/stories/${IG_USERNAME}/`,
     color: 0xc13584,
     image: story.media_url ? { url: story.media_url } : undefined,
     timestamp: story.timestamp,

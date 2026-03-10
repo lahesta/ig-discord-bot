@@ -37,7 +37,7 @@ interface DiscordEmbed {
 
 // ─── Ympäristömuuttujat ─────────────────────────────
 
-const IG_ACCESS_TOKEN = env("IG_ACCESS_TOKEN");
+const FB_ACCESS_TOKEN = env("IG_ACCESS_TOKEN");
 const DISCORD_WEBHOOK_URL = env("DISCORD_WEBHOOK_URL");
 const GITHUB_TOKEN = env("GITHUB_TOKEN");
 const GIST_ID = env("GIST_ID");
@@ -51,13 +51,76 @@ function env(name: string): string {
   return value;
 }
 
-// ─── Instagram Graph API ────────────────────────────
+// ─── Facebook Graph API → Instagram ─────────────────
 
-const IG_API_BASE = "https://graph.instagram.com/v21.0";
+const FB_API_BASE = "https://graph.facebook.com/v21.0";
 
-async function fetchRecentPosts(): Promise<IGMedia[]> {
+/**
+ * Hakee Instagram Business Account ID:n Facebook-tokenin kautta.
+ * Polku: Token → /me/accounts → Page → instagram_business_account
+ */
+async function resolveIGUserId(): Promise<string> {
+  const url = `${FB_API_BASE}/me/accounts?fields=id,name,instagram_business_account&access_token=${FB_ACCESS_TOKEN}`;
+
+  const res = await fetch(url);
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Facebook Pages -haku epäonnistui: ${res.status} – ${err}`);
+  }
+
+  const data = await res.json();
+  const pages = data.data ?? [];
+
+  for (const page of pages) {
+    if (page.instagram_business_account?.id) {
+      console.log(`📎 Löytyi IG-tili sivulta "${page.name}" → IG User ID: ${page.instagram_business_account.id}`);
+      return page.instagram_business_account.id;
+    }
+  }
+
+  throw new Error(
+    "❌ Yhdeltäkään Facebook-sivulta ei löytynyt linkitettyä Instagram Business -tiliä. " +
+    "Varmista, että Instagram-tili on yhdistetty Facebook-sivuun ja että token sisältää pages_show_list ja instagram_basic -oikeudet."
+  );
+}
+
+/**
+ * Tarkistaa tokenin tilan ja varoittaa jos se on vanhenemassa.
+ */
+async function checkTokenHealth(): Promise<void> {
+  const url = `${FB_API_BASE}/debug_token?input_token=${FB_ACCESS_TOKEN}&access_token=${FB_ACCESS_TOKEN}`;
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return; // Ei kriittinen – jatketaan normaalisti
+
+    const data = await res.json();
+    const info = data.data;
+
+    if (info?.expires_at) {
+      const expiresAt = new Date(info.expires_at * 1000);
+      const daysLeft = Math.floor((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+
+      if (daysLeft <= 0) {
+        console.error("🔴 TOKEN ON VANHENTUNUT! Uusi token tarvitaan.");
+      } else if (daysLeft <= 7) {
+        console.warn(`🟡 Token vanhenee ${daysLeft} päivän päästä (${expiresAt.toISOString()}). Uusi se pian!`);
+      } else {
+        console.log(`🟢 Token voimassa ${daysLeft} päivää (vanhenee ${expiresAt.toLocaleDateString("fi-FI")})`);
+      }
+    }
+
+    if (info?.scopes) {
+      console.log(`🔑 Token-oikeudet: ${info.scopes.join(", ")}`);
+    }
+  } catch {
+    // Token debug ei ole kriittinen – jatketaan
+  }
+}
+
+async function fetchRecentPosts(igUserId: string): Promise<IGMedia[]> {
   const fields = "id,caption,media_url,permalink,timestamp,media_type,thumbnail_url";
-  const url = `${IG_API_BASE}/me/media?fields=${fields}&limit=10&access_token=${IG_ACCESS_TOKEN}`;
+  const url = `${FB_API_BASE}/${igUserId}/media?fields=${fields}&limit=10&access_token=${FB_ACCESS_TOKEN}`;
 
   const res = await fetch(url);
   if (!res.ok) {
@@ -69,14 +132,14 @@ async function fetchRecentPosts(): Promise<IGMedia[]> {
   return data.data ?? [];
 }
 
-async function fetchStories(): Promise<IGStory[]> {
+async function fetchStories(igUserId: string): Promise<IGStory[]> {
   const fields = "id,media_url,timestamp,media_type";
-  const url = `${IG_API_BASE}/me/stories?fields=${fields}&access_token=${IG_ACCESS_TOKEN}`;
+  const url = `${FB_API_BASE}/${igUserId}/stories?fields=${fields}&access_token=${FB_ACCESS_TOKEN}`;
 
   const res = await fetch(url);
   if (!res.ok) {
     if (res.status === 400) {
-      console.log("ℹ️  Ei aktiivisia storyja (tai API ei tue niitä).");
+      console.log("ℹ️  Ei aktiivisia storyja tällä hetkellä.");
       return [];
     }
     const err = await res.text();
@@ -208,13 +271,19 @@ async function saveState(state: BotState): Promise<void> {
 async function main() {
   console.log(`🚀 Instagram → Discord bot käynnistyy (${new Date().toISOString()})`);
 
+  // Tarkista tokenin tila
+  await checkTokenHealth();
+
+  // Hae IG User ID Facebook-tokenin kautta
+  const igUserId = await resolveIGUserId();
+
   const state = await loadState();
   console.log(`📦 Edellinen tila: ${state.lastPostIds.length} tunnettua julkaisua, ${state.lastStoryIds.length} tunnettua storyä`);
 
-  const posts = await fetchRecentPosts();
+  const posts = await fetchRecentPosts(igUserId);
   console.log(`📬 Haettu ${posts.length} julkaisua Instagramista`);
 
-  const stories = await fetchStories();
+  const stories = await fetchStories(igUserId);
   console.log(`📬 Haettu ${stories.length} storyä Instagramista`);
 
   // Ensimmäisellä ajolla tallennetaan nykytila ilman ilmoituksia

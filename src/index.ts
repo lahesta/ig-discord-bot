@@ -114,7 +114,7 @@ async function checkTokenHealth(): Promise<void> {
       console.log(`🔑 Token-oikeudet: ${info.scopes.join(", ")}`);
     }
   } catch {
-    // Token debug ei ole kriittinen – jatketaan
+    // Token debug N/A
   }
 }
 

@@ -132,7 +132,7 @@ async function fetchRecentPosts(igUserId: string): Promise<IGMedia[]> {
   return data.data ?? [];
 }
 
-async function fetchStories(igUserId: string): Promise<IGStory[]> {
+async function fetchStories(igUserId: string): Promise<IGStory[] | null> {
   const fields = "id,media_url,timestamp,media_type";
   const url = `${FB_API_BASE}/${igUserId}/stories?fields=${fields}&access_token=${FB_ACCESS_TOKEN}`;
 
@@ -140,7 +140,7 @@ async function fetchStories(igUserId: string): Promise<IGStory[]> {
   if (!res.ok) {
     if (res.status === 400) {
       console.log("ℹ️  Ei aktiivisia storyja tällä hetkellä.");
-      return [];
+      return null;
     }
     const err = await res.text();
     throw new Error(`Instagram API virhe (stories): ${res.status} – ${err}`);
@@ -284,8 +284,10 @@ async function main() {
   const posts = await fetchRecentPosts(igUserId);
   console.log(`📬 Haettu ${posts.length} julkaisua Instagramista`);
 
-  const stories = await fetchStories(igUserId);
-  console.log(`📬 Haettu ${stories.length} storyä Instagramista`);
+  const storiesResult = await fetchStories(igUserId);
+  const stories = storiesResult ?? [];
+  const storiesFetchOk = storiesResult !== null;
+  console.log(`📬 Haettu ${stories.length} storyä Instagramista${!storiesFetchOk ? " (haku epäonnistui, käytetään edellistä tilaa)" : ""}`);
 
   // Ensimmäisellä ajolla tallennetaan nykytila ilman ilmoituksia
   if (!state.initialized) {
@@ -323,7 +325,7 @@ async function main() {
 
   const newState: BotState = {
     lastPostIds: posts.map((p) => p.id),
-    lastStoryIds: stories.map((s) => s.id),
+    lastStoryIds: storiesFetchOk ? stories.map((s) => s.id) : state.lastStoryIds,
     lastRun: new Date().toISOString(),
     initialized: true,
   };
